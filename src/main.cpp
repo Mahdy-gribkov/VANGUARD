@@ -41,17 +41,24 @@ static AppState g_state = AppState::BOOTING;
 // =============================================================================
 
 void setup() {
-    // Initialize M5Stack hardware
+    // Feed watchdog early
+    yield();
+
+    // Initialize M5Stack hardware with Cardputer-safe config
     auto cfg = M5.config();
     cfg.serial_baudrate = 115200;
-    cfg.internal_imu = false;  // Save power, we don't need IMU
-    cfg.internal_rtc = true;
-    cfg.internal_spk = false;  // Stealth mode - no beeps
+    cfg.clear_display = true;
+    cfg.internal_imu = false;
+    cfg.internal_rtc = false;   // Cardputer doesn't have RTC
+    cfg.internal_spk = false;
     cfg.internal_mic = false;
     cfg.external_imu = false;
     cfg.external_rtc = false;
-    cfg.led_brightness = 0;    // LED off for stealth
+    cfg.led_brightness = 0;
     M5.begin(cfg);
+
+    // Feed watchdog after M5.begin
+    yield();
 
     // Apply theme
     M5.Display.setRotation(1);  // Landscape
@@ -59,16 +66,28 @@ void setup() {
     M5.Display.setTextColor(Theme::COLOR_TEXT_PRIMARY);
     M5.Display.setFont(&fonts::Font0);
 
-    // Initialize components
+    // Show immediate feedback (before heavy init)
+    M5.Display.setCursor(10, 60);
+    M5.Display.print("Initializing...");
+
+    yield();  // Feed watchdog
+
+    // Initialize components (heavy operations)
     g_engine = &AssessorEngine::getInstance();
-    g_boot   = new BootSequence();
-    g_radar  = new TargetRadar(*g_engine);
+
+    yield();  // Feed watchdog
+
+    g_boot = new BootSequence();
+    g_radar = new TargetRadar(*g_engine);
 
     // Start boot sequence
     g_boot->begin();
     g_state = AppState::BOOTING;
 
-    Serial.println(F("[Assessor] Boot sequence started"));
+    // Safe serial print (only if CDC is connected)
+    if (Serial) {
+        Serial.println(F("[Assessor] Boot sequence started"));
+    }
 }
 
 // =============================================================================
@@ -82,7 +101,6 @@ void loop() {
         case AppState::BOOTING:
             g_boot->tick();
             if (g_boot->isComplete()) {
-                Serial.println(F("[Assessor] Boot complete, starting scan"));
                 g_engine->beginScan();
                 g_state = AppState::SCANNING;
             }
@@ -90,11 +108,8 @@ void loop() {
 
         case AppState::SCANNING:
             g_engine->tick();
-            // Show scanning progress on radar
             g_radar->renderScanning();
             if (g_engine->getScanState() == ScanState::COMPLETE) {
-                Serial.printf("[Assessor] Scan complete: %d targets\n",
-                              g_engine->getTargetCount());
                 g_state = AppState::RADAR;
             }
             break;
