@@ -283,9 +283,6 @@ void handleKeyboardInput() {
         return;  // No keyboard state change
     }
 
-    // Get keyboard state
-    Keyboard_Class::KeysState keys = M5Cardputer.Keyboard.keysState();
-
     // Handle menu input first (if visible)
     if (g_menu && g_menu->isVisible()) {
         if (M5Cardputer.Keyboard.isKeyPressed(';') || M5Cardputer.Keyboard.isKeyPressed(',')) {

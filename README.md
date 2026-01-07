@@ -1,71 +1,85 @@
 # The Assessor
 
-> **Know your target first.**
+<p align="center">
+  <img src="docs/images/logo.png" alt="The Assessor Logo" width="200"/>
+  <br/>
+  <strong>Target First. Always.</strong>
+</p>
 
-A target-first auditing tool for the M5Stack Cardputer. Instead of choosing an attack and then finding something to hit, The Assessor shows you what's around you and tells you exactly what you can do to each target.
+<p align="center">
+  <a href="#features">Features</a> |
+  <a href="#installation">Install</a> |
+  <a href="#usage">Usage</a> |
+  <a href="#attacks">Attacks</a> |
+  <a href="#architecture">Architecture</a>
+</p>
 
 ---
 
-## The Philosophy
+## Overview
 
-Traditional pentest tools work backwards:
-
-```
-[Pick Category] → [Pick Attack] → [Scan for Targets] → [Choose Target] → [Execute]
-
-You decide what to do before you know what's possible.
-```
-
-**The Assessor inverts this:**
+**The Assessor** is a target-first wireless auditing tool for the M5Stack Cardputer (ESP32-S3). Instead of navigating endless attack menus, you see what's around you first, tap a target, and instantly know what actions are available.
 
 ```
-[Auto-Scan] → [See All Targets] → [Tap One] → [See Valid Actions] → [Execute]
+Traditional Approach:
+[Menu] -> [Category] -> [Attack] -> [Scan] -> [Target] -> [Execute]
 
-You see reality first. Then you act on it.
+The Assessor:
+[Boot] -> [See Targets] -> [Pick One] -> [See Actions] -> [Execute]
 ```
 
-The target is the noun. The attack is the verb. **Pick the noun first.**
+**The target is the noun. The attack is the verb. Pick the noun first.**
 
 ---
 
 ## Features
 
 ### Target-First Discovery
-Boot up and immediately see every WiFi network, client device, and BLE beacon around you. No menus to navigate. No modes to select. Just reality.
+Boot up and choose your scan type: WiFi, Bluetooth, or both. Immediately see every wireless target around you sorted by signal strength.
 
 ### Context-Aware Actions
-Tap a target and see ONLY the actions that work:
-- **Access point with 5 clients?** → Deauth available
-- **Access point with 0 clients?** → Deauth hidden (nothing to deauth)
-- **Open network?** → Evil Twin available
-- **WPA3 network?** → PMKID capture hidden (not vulnerable)
+Select a target and see **only** the attacks that will work:
+- **WiFi AP with clients?** Deauth available
+- **Open network?** Evil Twin enabled
+- **5GHz network?** Attacks disabled (ESP32 limitation shown)
+- **BLE device?** Spam attacks available
 
-No more "Attack Failed - No Clients Connected" errors. If you see the button, it will work.
+### Unified Target View
+WiFi networks, client stations, and BLE devices all appear in the same list. Color-coded icons distinguish target types at a glance.
 
-### Signal-Sorted Radar
-Targets are sorted by signal strength. The strongest (closest, most vulnerable) targets appear first. Weak signals fade to the bottom.
-
-### Powered by Bruce
-Under the hood, The Assessor uses [Bruce](https://github.com/pr3y/Bruce)'s battle-tested attack modules. We didn't reinvent packet injection - we wrapped it in a smarter interface.
+### Professional UI
+- Sprite-based double buffering (no flickering)
+- Orange accent theme
+- Signal strength visualization
+- Security type color coding
+- Smooth scrolling with scroll indicators
 
 ---
 
 ## Screenshots
 
-> *Coming soon - the UI is under active development*
-
 ```
-┌────────────────────────────────────────┐
-│  TARGET RADAR                  [MENU]  │
-│  ════════════════════════════════════  │
-│                                        │
-│     ●───── NETGEAR-5G (-42dB)         │
-│     ◐───── iPhone-Sarah (-58dB)       │
-│     ○───── Hidden Network (-71dB)     │
-│     ◦───── Weak_Signal (-89dB)        │
-│                                        │
-│  ▼ 8 more targets                      │
-└────────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  THE ASSESSOR                        │
+│  "Target First. Always."             │
+│  ─────────────────────────────────   │
+│   [R] Scan WiFi                      │
+│   [B] Scan Bluetooth                 │
+│   [ENT] Scan Both                    │
+│                                      │
+│            [M] Menu                  │
+└──────────────────────────────────────┘
+
+┌──────────────────────────────────────┐
+│  TARGET RADAR                  12W 3B│
+│  ─────────────────────────────────   │
+│  ▌████ NETGEAR-5G       WPA2  -42dB │
+│   ███  HomeNetwork      WPA2  -58dB │
+│   ██   FBI_Van          OPEN  -71dB │
+│   █    [Hidden]         WPA3  -85dB │
+│                                    ▌ │
+│  [;,] Up  [./] Down  [Enter] Select │
+└──────────────────────────────────────┘
 ```
 
 ---
@@ -80,86 +94,134 @@ Under the hood, The Assessor uses [Bruce](https://github.com/pr3y/Bruce)'s battl
 ### Build & Flash
 
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/the-assessor.git
-cd the-assessor
+# Clone
+git clone https://github.com/Mahdy-gribkov/Task-Oriented-Assesor.git
+cd Task-Oriented-Assesor
 
 # Build
 pio run
 
-# Flash to Cardputer
+# Flash
 pio run -t upload
 
-# Monitor serial output (optional)
-pio device monitor
+# Monitor (optional)
+pio device monitor -b 115200
 ```
-
-### Pre-Built Binaries
-
-Check the [Releases](https://github.com/YOUR_USERNAME/the-assessor/releases) page for ready-to-flash `.bin` files.
 
 ---
 
 ## Usage
 
-1. **Boot** - Logo appears, auto-scan begins
-2. **Browse** - Scroll through discovered targets (sorted by signal)
-3. **Select** - Press enter on a target to see details
-4. **Act** - Choose from context-aware actions
-5. **Watch** - See real-time attack progress
-6. **Return** - Go back to radar and pick another target
+### Boot Sequence
+1. Device shows boot animation
+2. Press any key to skip (optional)
+3. Scan selector appears
 
-### Controls
+### Scan Selection
+| Key | Action |
+|-----|--------|
+| `R` | WiFi scan only |
+| `B` | Bluetooth scan only |
+| `Enter` / `E` | Combined WiFi + BLE scan |
+| `M` | Open menu |
 
-| Button | Action |
-|--------|--------|
-| ▲ / ▼ | Navigate list |
-| Enter | Select target / Confirm action |
-| Esc | Go back |
-| G | Open settings menu |
+### Target Radar
+| Key | Action |
+|-----|--------|
+| `;` / `,` | Navigate up |
+| `.` / `/` | Navigate down |
+| `Enter` / `E` | Select target |
+| `R` | Rescan |
+| `M` | Open menu |
+
+### Target Detail
+| Key | Action |
+|-----|--------|
+| `;` / `,` | Navigate actions up |
+| `.` / `/` | Navigate actions down |
+| `Enter` / `E` | Execute action |
+| `Q` / Backspace | Go back |
+
+### During Attack
+| Key | Action |
+|-----|--------|
+| `Q` / Backspace | Cancel attack |
+
+---
+
+## Attacks
+
+### WiFi Attacks
+
+| Attack | Description | Target Type |
+|--------|-------------|-------------|
+| **Deauth All** | Disconnect all clients from AP | Access Point |
+| **Deauth Single** | Target specific client | Station |
+| **Beacon Flood** | Spam fake network names | Any (uses AP's channel) |
+| **Evil Twin** | Clone AP for credential capture | Access Point |
+| **Capture PMKID** | Extract PMKID for offline crack | WPA2 Access Point |
+| **Monitor** | Passive packet capture | Any |
+
+### BLE Attacks
+
+| Attack | Description | Target Type |
+|--------|-------------|-------------|
+| **BLE Spam** | Flood fake pairing popups | BLE Device |
+| **Sour Apple** | iOS/macOS disruption attack | Apple BLE Device |
+| **iOS Popup** | Fake AirPods pairing popup | Any (broadcasts) |
+| **Android Fast Pair** | Fake Google pairing popup | Any (broadcasts) |
+| **Windows Swift Pair** | Fake Windows pairing popup | Any (broadcasts) |
+
+### Limitations
+
+- **5GHz Networks**: ESP32 can scan but not transmit on 5GHz. These targets are marked with yellow "5G" indicator and attacks are disabled.
+- **WPA3**: PMKID capture not available on WPA3 networks.
+- **BLE Range**: Effective range ~10m depending on target device.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      THE ASSESSOR                                │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │   ASSESSOR UI   │  │ ASSESSOR ENGINE │  │  BRUCE ENGINE   │  │
-│  │                 │  │                 │  │                 │  │
-│  │ • Boot Sequence │  │ • Target State  │  │ • WiFi Attacks  │  │
-│  │ • Target Radar  │◄─┤ • Vuln Scoring  │◄─┤ • BLE Attacks   │  │
-│  │ • Context Menus │  │ • Action Filter │  │ • RF Attacks    │  │
-│  │ • Animations    │  │ • Event Bus     │  │ • IR Attacks    │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-│         Layer 3              Layer 2             Layer 1        │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      THE ASSESSOR                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │     UI      │  │   ENGINE    │  │     ADAPTERS        │ │
+│  │             │  │             │  │                     │ │
+│  │BootSequence │  │ AssessorEng │  │ BruceWiFi (attacks) │ │
+│  │ ScanSelector│◄─┤ TargetTable │◄─┤ BruceBLE  (BLE)     │ │
+│  │ TargetRadar │  │ ActionRes.  │  │                     │ │
+│  │ TargetDetail│  │             │  │                     │ │
+│  │ MainMenu    │  │             │  │                     │ │
+│  │ SettingsPane│  │             │  │                     │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive.
+### Key Components
+
+- **AssessorEngine**: Orchestrates scanning, maintains target state, executes actions
+- **TargetTable**: Stores and filters discovered targets
+- **ActionResolver**: Determines valid actions for each target type
+- **BruceWiFi**: Raw WiFi packet injection using ESP32 promiscuous mode
+- **BruceBLE**: NimBLE-based BLE scanning and advertising
 
 ---
 
-## Supported Attacks
+## Configuration
 
-### WiFi
-| Attack | Description | Requirement |
-|--------|-------------|-------------|
-| Deauth All | Disconnect all clients from AP | Target has clients |
-| Deauth Single | Disconnect specific client | Target has clients |
-| Beacon Flood | Spam fake networks | Any AP target |
-| Evil Twin | Clone network for credential capture | Any AP target |
-| Capture PMKID | Grab PMKID hash for offline cracking | WPA2 target |
-| Monitor | Passive packet capture | Any target |
+Settings available via menu (`M` key):
 
-### BLE
-| Attack | Description | Requirement |
-|--------|-------------|-------------|
-| BLE Spam | Flood with pairing requests | BLE device nearby |
-| Sour Apple | Apple device DoS | Apple BLE device |
-| Skimmer Detect | Identify suspicious BLE devices | Any |
+| Setting | Range | Default |
+|---------|-------|---------|
+| WiFi Scan Time | 2-15 sec | 5 sec |
+| BLE Scan Time | 1-10 sec | 3 sec |
+| Deauth Packets | 5-50 | 10 |
+| Auto Rescan | On/Off | On |
+| Sound Effects | On/Off | Off |
 
 ---
 
@@ -167,42 +229,33 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive.
 
 **This tool is for authorized security testing and educational purposes only.**
 
-You must have explicit permission from the network owner before running any attacks. Unauthorized network intrusion is illegal in most jurisdictions.
+- You must have explicit written permission before testing any network
+- Unauthorized network intrusion is illegal in most jurisdictions
+- The developers assume no liability for misuse
+- Always follow your local laws and regulations
 
-The developers are not responsible for misuse of this software. If you can't hack responsibly, don't hack at all.
-
----
-
-## Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Priority Areas
-- [ ] Bruce adapter implementation
-- [ ] UI polish and animations
-- [ ] BLE attack support
-- [ ] RF/IR support (hardware-dependent)
-- [ ] Documentation and screenshots
+**If you can't hack responsibly, don't hack at all.**
 
 ---
 
 ## Credits
 
-- **Bruce** - The attack engine that makes this possible ([pr3y/Bruce](https://github.com/pr3y/Bruce))
+- **[Bruce](https://github.com/pr3y/Bruce)** - Attack implementations and inspiration
 - **M5Stack** - Hardware and M5Unified library
-- **ESP-IDF** - The foundation of ESP32 development
+- **NimBLE-Arduino** - BLE stack
+- **ESP-IDF** - ESP32 framework
 
 ---
 
 ## License
 
-GPL-3.0 - See [LICENSE](LICENSE) for details.
+GPL-3.0 - See [LICENSE](LICENSE)
 
-This project is a derivative work of Bruce and maintains license compatibility.
+This project is a derivative work and maintains license compatibility with Bruce.
 
 ---
 
 <p align="center">
-  <b>The Assessor</b><br>
-  <i>Know your target first.</i>
+  <strong>The Assessor</strong><br/>
+  <em>Target First. Always.</em>
 </p>

@@ -196,12 +196,21 @@ void AssessorEngine::beginBLEScan() {
         Serial.println("[BLE] Starting BLE scan...");
     }
 
+    m_targetTable.clear();  // Clear previous targets
     m_scanState = ScanState::BLE_SCANNING;
     m_scanProgress = 0;
     m_scanStartMs = millis();
     m_combinedScan = false;  // BLE only
 
     BruceBLE& ble = BruceBLE::getInstance();
+    if (!ble.init()) {
+        if (Serial) {
+            Serial.println("[BLE] Init failed!");
+        }
+        m_scanState = ScanState::COMPLETE;
+        m_scanProgress = 100;
+        return;
+    }
     ble.beginScan(5000);  // 5 second scan
 
     if (m_onScanProgress) {

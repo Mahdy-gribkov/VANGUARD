@@ -15,7 +15,8 @@
       "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe run)",
       "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe run -t upload)",
       "Bash(git add:*)",
-      "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe run:*)"
+      "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe run:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
