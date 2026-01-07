@@ -450,24 +450,80 @@ void BruceWiFi::tickHandshakeCapture() {
 }
 
 // =============================================================================
-// EVIL TWIN (Stub)
+// EVIL TWIN
 // =============================================================================
+
+// Evil Twin state
+static char s_evilTwinSSID[33] = {0};
+static uint8_t s_evilTwinChannel = 1;
+static bool s_evilTwinDeauth = false;
+static int s_capturedCredentials = 0;
 
 bool BruceWiFi::startEvilTwin(const char* ssid,
                                uint8_t channel,
                                bool sendDeauth) {
-    // TODO: Implement evil twin with captive portal
-    return false;
+    if (!ssid || strlen(ssid) == 0) return false;
+
+    stopAttack();
+
+    // Save config
+    strncpy(s_evilTwinSSID, ssid, 32);
+    s_evilTwinSSID[32] = '\0';
+    s_evilTwinChannel = channel;
+    s_evilTwinDeauth = sendDeauth;
+    s_capturedCredentials = 0;
+
+    // Stop station mode
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(100);
+
+    // Start soft AP with cloned SSID (open network)
+    WiFi.mode(WIFI_AP);
+    WiFi.softAPConfig(IPAddress(192, 168, 4, 1),
+                      IPAddress(192, 168, 4, 1),
+                      IPAddress(255, 255, 255, 0));
+
+    if (!WiFi.softAP(s_evilTwinSSID, "", s_evilTwinChannel)) {
+        if (Serial) {
+            Serial.println("[WiFi] Failed to start Evil Twin AP");
+        }
+        WiFi.mode(WIFI_STA);
+        return false;
+    }
+
+    if (Serial) {
+        Serial.printf("[WiFi] Evil Twin started: %s on ch%d\n", s_evilTwinSSID, s_evilTwinChannel);
+        Serial.printf("[WiFi] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
+    }
+
+    m_state = WiFiAdapterState::EVIL_TWIN_ACTIVE;
+    m_packetsSent = 0;
+    m_lastPacketMs = millis();
+
+    // Note: Full captive portal requires WebServer and DNSServer
+    // For now, just creates the fake AP - clients will see it
+
+    return true;
 }
 
 void BruceWiFi::stopEvilTwin() {
     if (m_state == WiFiAdapterState::EVIL_TWIN_ACTIVE) {
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_OFF);
+        delay(100);
+        WiFi.mode(WIFI_STA);
+
+        if (Serial) {
+            Serial.println("[WiFi] Evil Twin stopped");
+        }
+
         m_state = WiFiAdapterState::IDLE;
     }
 }
 
 int BruceWiFi::getCapturedCredentialCount() const {
-    return 0;  // TODO
+    return s_capturedCredentials;
 }
 
 void BruceWiFi::onCredentialCaptured(CredentialCapturedCallback cb) {
@@ -511,6 +567,11 @@ void BruceWiFi::tickMonitor() {
 // =============================================================================
 
 void BruceWiFi::stopAttack() {
+    // Stop Evil Twin if running
+    if (m_state == WiFiAdapterState::EVIL_TWIN_ACTIVE) {
+        stopEvilTwin();
+    }
+
     setPromiscuous(false);
     m_state = WiFiAdapterState::IDLE;
     m_packetsSent = 0;
