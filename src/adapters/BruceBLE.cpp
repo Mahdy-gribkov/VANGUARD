@@ -51,55 +51,52 @@ bool BruceBLE::init() {
         Serial.println("[BLE] Initializing...");
     }
 
-    yield();  // Feed watchdog
+    // Aggressive watchdog feeding throughout
+    for (int i = 0; i < 10; i++) { yield(); delay(10); }
 
     // Check if NimBLE is already initialized
-    bool wasInitialized = NimBLEDevice::getInitialized();
-    if (wasInitialized) {
+    if (!NimBLEDevice::getInitialized()) {
+        // Feed watchdog before heavy operation
+        for (int i = 0; i < 5; i++) { yield(); delay(10); }
+
+        NimBLEDevice::init("Velora");
+
+        // Feed watchdog after heavy operation
+        for (int i = 0; i < 10; i++) { yield(); delay(10); }
+    } else {
         if (Serial) {
             Serial.println("[BLE] Already initialized, reusing");
         }
-    } else {
-        // Initialize NimBLE fresh - this can take time
-        yield();
-        NimBLEDevice::init("Velora");
-        yield();
-        delay(50);  // Small delay for BLE stack to settle
-        yield();
     }
 
-    // Get scanner
+    // Get scanner with validation
     m_scanner = NimBLEDevice::getScan();
     if (!m_scanner) {
         if (Serial) {
-            Serial.println("[BLE] Failed to get scanner");
+            Serial.println("[BLE] Scanner null!");
         }
         return false;
     }
 
-    yield();  // Feed watchdog
+    yield();
 
-    // Create and set scan callbacks (only if not already set)
+    // Setup callbacks
     if (!m_scanCallbacks) {
         m_scanCallbacks = new ScanCallbacks(this);
     }
     m_scanner->setAdvertisedDeviceCallbacks(m_scanCallbacks);
-
-    // Configure scanner
-    m_scanner->setActiveScan(true);   // Active scan gets device names
+    m_scanner->setActiveScan(true);
     m_scanner->setInterval(100);
-    m_scanner->setWindow(99);         // Nearly continuous scanning
+    m_scanner->setWindow(99);
 
-    yield();  // Feed watchdog
+    yield();
 
-    // Get advertising handle
     m_advertising = NimBLEDevice::getAdvertising();
-
     m_initialized = true;
     m_state = BLEAdapterState::IDLE;
 
     if (Serial) {
-        Serial.println("[BLE] Initialized OK");
+        Serial.println("[BLE] Ready");
     }
 
     return true;
@@ -148,14 +145,22 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
         if (!init()) return false;
     }
 
+    // Stop any existing scan first
+    if (m_scanner && m_scanner->isScanning()) {
+        m_scanner->stop();
+        for (int i = 0; i < 5; i++) { yield(); delay(10); }
+    }
+
     stopAttack();  // Stop any current operation
 
     m_devices.clear();
     m_scanStartMs = millis();
     m_scanDurationMs = durationMs;
 
-    // Start scan - 0 duration means use our timeout control
-    m_scanner->start(0, false);  // Duration 0, don't continue after stop
+    // Feed watchdog before starting scan
+    for (int i = 0; i < 5; i++) { yield(); delay(10); }
+
+    m_scanner->start(0, false);
     m_state = BLEAdapterState::SCANNING;
 
     if (Serial) {

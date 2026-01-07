@@ -47,20 +47,28 @@ bool AssessorEngine::init() {
     if (m_initialized) return true;
 
     if (Serial) {
-        Serial.println("[WiFi] Initializing WiFi...");
+        Serial.println("[WiFi] Initializing...");
     }
 
-    // Initialize WiFi with proper sequence
+    // Step 1: Clean shutdown any existing WiFi state
+    WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
-    delay(100);
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect(true);  // true = erase AP credentials
-    delay(500);  // Give WiFi hardware time to fully initialize
 
-    // Verify WiFi is ready
+    // Distributed delays with watchdog feeding
+    for (int i = 0; i < 5; i++) { yield(); delay(20); }
+
+    // Step 2: Set station mode
+    WiFi.mode(WIFI_STA);
+    for (int i = 0; i < 5; i++) { yield(); delay(20); }
+
+    // Step 3: Delete any old scan results
+    WiFi.scanDelete();
+    yield();
+
+    // Step 4: Verify mode
     if (WiFi.getMode() != WIFI_STA) {
         if (Serial) {
-            Serial.println("[WiFi] ERROR: Failed to set STA mode!");
+            Serial.println("[WiFi] ERROR: Mode not STA!");
         }
         return false;
     }
@@ -68,8 +76,7 @@ bool AssessorEngine::init() {
     m_initialized = true;
 
     if (Serial) {
-        Serial.printf("[WiFi] WiFi initialized in STA mode (MAC: %s)\n",
-                      WiFi.macAddress().c_str());
+        Serial.printf("[WiFi] Ready (MAC: %s)\n", WiFi.macAddress().c_str());
     }
     return true;
 }
@@ -170,9 +177,20 @@ void AssessorEngine::beginScan() {
 }
 
 void AssessorEngine::beginWiFiScan() {
-    if (!m_initialized) {
-        init();
+    // Always reinit to ensure clean state
+    m_initialized = false;
+    if (!init()) {
+        if (Serial) {
+            Serial.println("[WiFi] Init failed, aborting scan");
+        }
+        m_scanState = ScanState::COMPLETE;
+        m_scanProgress = 100;
+        return;
     }
+
+    // Clear old results
+    WiFi.scanDelete();
+    yield();
 
     if (Serial) {
         Serial.println("[WiFi] Starting WiFi-only scan...");
@@ -184,7 +202,12 @@ void AssessorEngine::beginWiFiScan() {
     m_scanStartMs = millis();
     m_combinedScan = false;  // WiFi only
 
-    WiFi.scanNetworks(true, true, false, 500);
+    // Start async scan with reasonable timeout per channel
+    int result = WiFi.scanNetworks(true, true, false, 300);
+
+    if (Serial) {
+        Serial.printf("[WiFi] Scan started (result=%d)\n", result);
+    }
 
     if (m_onScanProgress) {
         m_onScanProgress(m_scanState, m_scanProgress);
@@ -193,35 +216,35 @@ void AssessorEngine::beginWiFiScan() {
 
 void AssessorEngine::beginBLEScan() {
     if (Serial) {
-        Serial.println("[BLE] Starting BLE scan...");
+        Serial.println("[BLE] Starting BLE-only scan...");
     }
 
-    m_targetTable.clear();  // Clear previous targets
+    m_targetTable.clear();
     m_scanProgress = 0;
     m_scanStartMs = millis();
-    m_combinedScan = false;  // BLE only
+    m_combinedScan = false;
 
-    yield();  // Feed watchdog before BLE init
+    // Feed watchdog before BLE operations
+    for (int i = 0; i < 10; i++) { yield(); delay(10); }
 
     BruceBLE& ble = BruceBLE::getInstance();
 
-    // Try to init BLE with retries
+    // Try init with proper delays
     bool bleInitOk = false;
     for (int attempt = 0; attempt < 2; attempt++) {
-        yield();
+        for (int i = 0; i < 5; i++) { yield(); delay(10); }
+
         bleInitOk = ble.init();
         if (bleInitOk) break;
 
         if (Serial) {
             Serial.printf("[BLE] Init attempt %d failed\n", attempt + 1);
         }
-        delay(100);
-        yield();
     }
 
     if (!bleInitOk) {
         if (Serial) {
-            Serial.println("[BLE] Init failed after retries!");
+            Serial.println("[BLE] Init failed!");
         }
         m_scanState = ScanState::COMPLETE;
         m_scanProgress = 100;
@@ -229,7 +252,7 @@ void AssessorEngine::beginBLEScan() {
     }
 
     m_scanState = ScanState::BLE_SCANNING;
-    ble.beginScan(5000);  // 5 second scan
+    ble.beginScan(5000);
 
     if (m_onScanProgress) {
         m_onScanProgress(m_scanState, m_scanProgress);
@@ -327,34 +350,45 @@ void AssessorEngine::processScanResults(int count) {
     // If combined scan, chain to BLE scan
     if (m_combinedScan) {
         if (Serial) {
-            Serial.println("[Scan] WiFi done, starting BLE scan...");
+            Serial.println("[Scan] WiFi done, preparing BLE...");
         }
 
-        // Give WiFi hardware time to release before BLE init
-        yield();
-        delay(100);
-        yield();
+        // CRITICAL: Allow radio to fully transition from WiFi to BLE
+        // Feed watchdog aggressively during transition
+        for (int i = 0; i < 20; i++) {
+            yield();
+            delay(10);
+        }
 
         BruceBLE& ble = BruceBLE::getInstance();
-        bool bleInitOk = false;
 
-        // Try BLE init with error recovery
-        for (int attempt = 0; attempt < 2; attempt++) {
+        // Reset BLE state to force clean init
+        ble.shutdown();
+
+        // More watchdog feeding
+        for (int i = 0; i < 10; i++) {
             yield();
+            delay(10);
+        }
+
+        // Try BLE init with proper watchdog feeding between attempts
+        bool bleInitOk = false;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            for (int i = 0; i < 5; i++) { yield(); delay(10); }
+
             bleInitOk = ble.init();
             if (bleInitOk) break;
 
             if (Serial) {
-                Serial.printf("[Scan] BLE init attempt %d failed\n", attempt + 1);
+                Serial.printf("[BLE] Init attempt %d failed\n", attempt + 1);
             }
-            delay(100);
-            yield();
+
+            for (int i = 0; i < 10; i++) { yield(); delay(10); }
         }
 
         if (!bleInitOk) {
-            // BLE init failed, skip BLE scan but don't crash
             if (Serial) {
-                Serial.println("[Scan] BLE init failed, completing without BLE");
+                Serial.println("[BLE] Init failed, completing without BLE");
             }
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;
@@ -365,10 +399,9 @@ void AssessorEngine::processScanResults(int count) {
         }
 
         m_scanState = ScanState::BLE_SCANNING;
-        m_scanProgress = 50;  // 50% progress (WiFi done)
+        m_scanProgress = 50;
         m_scanStartMs = millis();
-
-        ble.beginScan(3000);  // 3 second BLE scan
+        ble.beginScan(3000);
 
         if (m_onScanProgress) {
             m_onScanProgress(m_scanState, m_scanProgress);

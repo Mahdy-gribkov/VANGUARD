@@ -78,7 +78,7 @@ void SettingsPanel::initSettings() {
         "Sound Effects",
         "Beeps and feedback",
         SettingType::TOGGLE,
-        0,      // default OFF
+        1,      // default ON
         0, 1, 1
     });
 }
