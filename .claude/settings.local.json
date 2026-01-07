@@ -6,7 +6,11 @@
       "Bash(where:*)",
       "Bash(where pio:*)",
       "Bash(dir \"%USERPROFILE%\\\\.platformio\\\\penv\\\\Scripts\\\\pio*\")",
-      "Bash(\"C:/Users/User/.platformio/penv/Scripts/pio.exe\" run)"
+      "Bash(\"C:/Users/User/.platformio/penv/Scripts/pio.exe\" run)",
+      "Bash(\"C:/Users/User/.platformio/penv/Scripts/pio.exe\" run -t upload)",
+      "Bash(timeout 10 \"C:/Users/User/.platformio/penv/Scripts/pio.exe\" device monitor:*)",
+      "Bash(\"C:/Users/User/.platformio/penv/Scripts/pio.exe\" device list)",
+      "Bash(cat:*)"
     ]
   }
 }

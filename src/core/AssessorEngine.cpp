@@ -1,10 +1,10 @@
 /**
  * @file AssessorEngine.cpp
- * @brief The orchestrator - ties scanning, targets, and actions together
+ * @brief The orchestrator - WiFi scanning with proper timing
  */
 
 #include "AssessorEngine.h"
-#include "../adapters/BruceWiFi.h"
+#include <WiFi.h>
 
 namespace Assessor {
 
@@ -24,6 +24,7 @@ AssessorEngine::AssessorEngine()
     , m_actionActive(false)
     , m_onScanProgress(nullptr)
     , m_onActionProgress(nullptr)
+    , m_scanStartMs(0)
 {
     m_actionProgress.type = ActionType::NONE;
     m_actionProgress.result = ActionResult::SUCCESS;
@@ -40,50 +41,41 @@ AssessorEngine::~AssessorEngine() {
 
 bool AssessorEngine::init() {
     if (m_initialized) return true;
-
-    // Initialize WiFi adapter
-    if (!BruceWiFi::getInstance().init()) {
-        return false;
-    }
-
-    // Register scan callback
-    BruceWiFi::getInstance().onScanComplete([this](int count) {
-        processScanResults(count);
-    });
-
-    // Register attack progress callback
-    BruceWiFi::getInstance().onAttackProgress([this](uint32_t packets) {
-        m_actionProgress.packetsSent = packets;
-        m_actionProgress.elapsedMs = millis() - m_actionProgress.startTimeMs;
-        if (m_onActionProgress) {
-            m_onActionProgress(m_actionProgress);
-        }
-    });
-
+    
+    // Initialize WiFi
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+    
     m_initialized = true;
     return true;
 }
 
 void AssessorEngine::shutdown() {
-    stopScan();
-    stopAction();
-    BruceWiFi::getInstance().shutdown();
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
     m_initialized = false;
 }
 
 void AssessorEngine::tick() {
-    if (!m_initialized) return;
-
-    BruceWiFi::getInstance().tick();
-    tickScan();
-    tickAction();
-
-    // Periodic stale target pruning
-    static uint32_t lastPruneMs = 0;
-    uint32_t now = millis();
-    if (now - lastPruneMs > 10000) {  // Every 10 seconds
-        m_targetTable.pruneStale(now);
-        lastPruneMs = now;
+    // Check if async scan completed
+    if (m_scanState == ScanState::WIFI_SCANNING) {
+        int result = WiFi.scanComplete();
+        
+        if (result >= 0) {
+            // Scan done - process results
+            processScanResults(result);
+        } 
+        else if (result == WIFI_SCAN_FAILED) {
+            // Scan failed - mark complete with 0 results
+            m_scanState = ScanState::COMPLETE;
+            m_scanProgress = 100;
+        }
+        else {
+            // Still scanning - update progress (scan takes ~3-5 seconds)
+            uint32_t elapsed = millis() - m_scanStartMs;
+            m_scanProgress = min(95, (int)(elapsed / 50));  // Max 95% until done
+        }
     }
 }
 
@@ -92,27 +84,35 @@ void AssessorEngine::tick() {
 // =============================================================================
 
 void AssessorEngine::beginScan() {
-    beginWiFiScan();
-    // TODO: Add BLE scan after WiFi completes
-}
-
-void AssessorEngine::beginWiFiScan() {
+    if (!m_initialized) {
+        init();
+    }
+    
+    m_targetTable.clear();
     m_scanState = ScanState::WIFI_SCANNING;
     m_scanProgress = 0;
-    BruceWiFi::getInstance().beginScan();
-
+    m_scanStartMs = millis();
+    
+    // Start async scan
+    // Parameters: async=true, show_hidden=true, passive=false, max_ms=5000
+    WiFi.scanNetworks(true, true, false, 300);  // 300ms per channel
+    
     if (m_onScanProgress) {
         m_onScanProgress(m_scanState, m_scanProgress);
     }
 }
 
+void AssessorEngine::beginWiFiScan() {
+    beginScan();
+}
+
 void AssessorEngine::beginBLEScan() {
-    m_scanState = ScanState::BLE_SCANNING;
-    // TODO: Implement BLE scanning
+    // Not implemented yet
+    m_scanState = ScanState::COMPLETE;
 }
 
 void AssessorEngine::stopScan() {
-    BruceWiFi::getInstance().stopScan();
+    WiFi.scanDelete();
     m_scanState = ScanState::IDLE;
 }
 
@@ -129,33 +129,32 @@ void AssessorEngine::onScanProgress(ScanProgressCallback cb) {
 }
 
 void AssessorEngine::tickScan() {
-    if (m_scanState == ScanState::WIFI_SCANNING) {
-        if (BruceWiFi::getInstance().isScanComplete()) {
-            // Results will be processed via callback
-        }
-    }
+    // Handled in tick()
 }
 
 void AssessorEngine::processScanResults(int count) {
-    BruceWiFi& wifi = BruceWiFi::getInstance();
-
     for (int i = 0; i < count; i++) {
-        ScanResultEntry entry;
-        if (!wifi.getScanResult(i, entry)) continue;
-
         Target target;
         memset(&target, 0, sizeof(Target));
-
-        memcpy(target.bssid, entry.bssid, 6);
-        strncpy(target.ssid, entry.ssid, SSID_MAX_LEN);
+        
+        // Get BSSID
+        uint8_t* bssid = WiFi.BSSID(i);
+        if (bssid) {
+            memcpy(target.bssid, bssid, 6);
+        }
+        
+        // Get SSID
+        String ssid = WiFi.SSID(i);
+        strncpy(target.ssid, ssid.c_str(), SSID_MAX_LEN);
         target.ssid[SSID_MAX_LEN] = '\0';
-
+        
         target.type = TargetType::ACCESS_POINT;
-        target.channel = entry.channel;
-        target.rssi = entry.rssi;
-
-        // Map encryption type to our SecurityType
-        switch (entry.encryptionType) {
+        target.channel = WiFi.channel(i);
+        target.rssi = WiFi.RSSI(i);
+        
+        // Map encryption
+        wifi_auth_mode_t enc = WiFi.encryptionType(i);
+        switch (enc) {
             case WIFI_AUTH_OPEN:
                 target.security = SecurityType::OPEN;
                 break;
@@ -166,8 +165,6 @@ void AssessorEngine::processScanResults(int count) {
                 target.security = SecurityType::WPA_PSK;
                 break;
             case WIFI_AUTH_WPA2_PSK:
-                target.security = SecurityType::WPA2_PSK;
-                break;
             case WIFI_AUTH_WPA_WPA2_PSK:
                 target.security = SecurityType::WPA2_PSK;
                 break;
@@ -180,23 +177,25 @@ void AssessorEngine::processScanResults(int count) {
             default:
                 target.security = SecurityType::UNKNOWN;
         }
-
+        
         target.isHidden = (strlen(target.ssid) == 0);
         if (target.isHidden) {
             strcpy(target.ssid, "[Hidden]");
         }
-
+        
         target.firstSeenMs = millis();
         target.lastSeenMs = millis();
         target.beaconCount = 1;
-        target.clientCount = 0;  // Will be updated via monitoring
-
+        target.clientCount = 0;
+        
         m_targetTable.addOrUpdate(target);
     }
-
+    
+    WiFi.scanDelete();  // Free memory
+    
     m_scanState = ScanState::COMPLETE;
     m_scanProgress = 100;
-
+    
     if (m_onScanProgress) {
         m_onScanProgress(m_scanState, m_scanProgress);
     }
@@ -228,7 +227,7 @@ void AssessorEngine::clearTargets() {
 }
 
 // =============================================================================
-// ACTIONS
+// ACTIONS (Stubs for now)
 // =============================================================================
 
 std::vector<AvailableAction> AssessorEngine::getActionsFor(const Target& target) const {
@@ -236,78 +235,13 @@ std::vector<AvailableAction> AssessorEngine::getActionsFor(const Target& target)
 }
 
 bool AssessorEngine::executeAction(ActionType action, const Target& target) {
-    if (m_actionActive) {
-        stopAction();
-    }
-
-    // Verify action is valid
-    if (!m_actionResolver.isActionValid(target, action)) {
-        return false;
-    }
-
-    BruceWiFi& wifi = BruceWiFi::getInstance();
-    bool started = false;
-
-    m_actionProgress.type = action;
-    m_actionProgress.result = ActionResult::IN_PROGRESS;
-    m_actionProgress.startTimeMs = millis();
-    m_actionProgress.elapsedMs = 0;
-    m_actionProgress.packetsSent = 0;
-
-    switch (action) {
-        case ActionType::DEAUTH_ALL:
-            started = wifi.deauthAll(target.bssid, target.channel);
-            m_actionProgress.statusText = "Sending deauth frames...";
-            break;
-
-        case ActionType::DEAUTH_SINGLE:
-            // For single deauth, we'd need client selection
-            // For now, fall back to broadcast
-            started = wifi.deauthAll(target.bssid, target.channel);
-            m_actionProgress.statusText = "Deauthing client...";
-            break;
-
-        case ActionType::BEACON_FLOOD: {
-            const char* ssids[] = { target.ssid };
-            started = wifi.beaconFlood(ssids, 1, target.channel);
-            m_actionProgress.statusText = "Flooding beacons...";
-            break;
-        }
-
-        case ActionType::CAPTURE_HANDSHAKE:
-            started = wifi.captureHandshake(target.bssid, target.channel, true);
-            m_actionProgress.statusText = "Capturing handshake...";
-            break;
-
-        case ActionType::MONITOR:
-            started = wifi.startMonitor(target.channel);
-            m_actionProgress.statusText = "Monitoring...";
-            break;
-
-        case ActionType::EVIL_TWIN:
-            started = wifi.startEvilTwin(target.ssid, target.channel, true);
-            m_actionProgress.statusText = "Evil twin active...";
-            break;
-
-        default:
-            m_actionProgress.result = ActionResult::FAILED_NOT_SUPPORTED;
-            return false;
-    }
-
-    if (started) {
-        m_actionActive = true;
-        if (m_onActionProgress) {
-            m_onActionProgress(m_actionProgress);
-        }
-    } else {
-        m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-    }
-
-    return started;
+    // TODO: Re-enable attacks once UI is solid
+    m_actionProgress.result = ActionResult::FAILED_NOT_SUPPORTED;
+    m_actionProgress.statusText = "Coming soon...";
+    return false;
 }
 
 void AssessorEngine::stopAction() {
-    BruceWiFi::getInstance().stopAttack();
     m_actionActive = false;
     m_actionProgress.result = ActionResult::CANCELLED;
 }
@@ -325,21 +259,7 @@ void AssessorEngine::onActionProgress(ActionProgressCallback cb) {
 }
 
 void AssessorEngine::tickAction() {
-    if (!m_actionActive) return;
-
-    WiFiAdapterState state = BruceWiFi::getInstance().getState();
-
-    if (state == WiFiAdapterState::IDLE || state == WiFiAdapterState::ERROR) {
-        // Attack finished
-        m_actionActive = false;
-        m_actionProgress.result = (state == WiFiAdapterState::ERROR)
-            ? ActionResult::FAILED_HARDWARE
-            : ActionResult::SUCCESS;
-
-        if (m_onActionProgress) {
-            m_onActionProgress(m_actionProgress);
-        }
-    }
+    // No-op for now
 }
 
 // =============================================================================
@@ -351,15 +271,15 @@ bool AssessorEngine::hasWiFi() const {
 }
 
 bool AssessorEngine::hasBLE() const {
-    return true;  // Cardputer has BLE
+    return true;
 }
 
 bool AssessorEngine::hasRF() const {
-    return false;  // Base Cardputer doesn't have sub-GHz
+    return false;
 }
 
 bool AssessorEngine::hasIR() const {
-    return true;  // Cardputer has IR
+    return true;
 }
 
 } // namespace Assessor

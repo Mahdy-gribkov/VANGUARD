@@ -240,6 +240,9 @@ private:
     ScanProgressCallback   m_onScanProgress;
     ActionProgressCallback m_onActionProgress;
 
+    // Scan timing
+    uint32_t m_scanStartMs;
+
     // Internal tick handlers
     void tickScan();
     void tickAction();
