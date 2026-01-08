@@ -282,7 +282,6 @@ void BruceWiFi::tickDeauth() {
     sendRawFrame(frame, DEAUTH_FRAME_LEN);
     sendRawFrame(frame, DEAUTH_FRAME_LEN);
     sendRawFrame(frame, DEAUTH_FRAME_LEN);
-
     m_packetsSent += 3;
 
     if (m_onAttackProgress) {

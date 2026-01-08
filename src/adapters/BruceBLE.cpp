@@ -51,25 +51,16 @@ bool BruceBLE::init() {
         Serial.println("[BLE] Initializing...");
     }
 
-    // Aggressive watchdog feeding throughout
-    for (int i = 0; i < 10; i++) { yield(); delay(10); }
-
     // Check if NimBLE is already initialized
     if (!NimBLEDevice::getInitialized()) {
-        // Feed watchdog before heavy operation
-        for (int i = 0; i < 5; i++) { yield(); delay(10); }
-
         NimBLEDevice::init("Velora");
-
-        // Feed watchdog after heavy operation
-        for (int i = 0; i < 10; i++) { yield(); delay(10); }
     } else {
         if (Serial) {
             Serial.println("[BLE] Already initialized, reusing");
         }
     }
 
-    // Get scanner with validation
+    // Get scanner
     m_scanner = NimBLEDevice::getScan();
     if (!m_scanner) {
         if (Serial) {
@@ -77,8 +68,6 @@ bool BruceBLE::init() {
         }
         return false;
     }
-
-    yield();
 
     // Setup callbacks
     if (!m_scanCallbacks) {
@@ -88,8 +77,6 @@ bool BruceBLE::init() {
     m_scanner->setActiveScan(true);
     m_scanner->setInterval(100);
     m_scanner->setWindow(99);
-
-    yield();
 
     m_advertising = NimBLEDevice::getAdvertising();
     m_initialized = true;
@@ -148,17 +135,14 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
     // Stop any existing scan first
     if (m_scanner && m_scanner->isScanning()) {
         m_scanner->stop();
-        for (int i = 0; i < 5; i++) { yield(); delay(10); }
+        delay(50);
     }
 
-    stopAttack();  // Stop any current operation
+    stopAttack();
 
     m_devices.clear();
     m_scanStartMs = millis();
     m_scanDurationMs = durationMs;
-
-    // Feed watchdog before starting scan
-    for (int i = 0; i < 5; i++) { yield(); delay(10); }
 
     m_scanner->start(0, false);
     m_state = BLEAdapterState::SCANNING;
@@ -384,7 +368,6 @@ void BruceBLE::tickSpam() {
 
     m_advertising->setAdvertisementData(advertisementData);
     m_advertising->start();
-
     m_advertisementsSent++;
 
     if (m_onSpamProgress) {
