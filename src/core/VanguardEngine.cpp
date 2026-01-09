@@ -15,17 +15,7 @@
 
 namespace Vanguard {
 
-// =============================================================================
-// HELPER: Watchdog-safe delay
-// =============================================================================
 
-static void yieldDelay(uint32_t ms) {
-    uint32_t start = millis();
-    while (millis() - start < ms) {
-        yield();
-        delay(1);
-    }
-}
 
 // =============================================================================
 // SINGLETON
@@ -75,7 +65,7 @@ bool VanguardEngine::init() {
     BruceIR::getInstance().init();
 
     // Start in Station mode by default
-    RadioWarden::getInstance().requestRadio(RadioOwner::WIFI_STA);
+    RadioWarden::getInstance().requestRadio(RadioOwner::OWNER_WIFI_STA);
 
     m_initialized = true;
 
@@ -812,11 +802,11 @@ bool VanguardEngine::executeAction(ActionType action, const Target& target) {
 
 void VanguardEngine::stopAction() {
     BruceWiFi& wifi = BruceWiFi::getInstance();
-    wifi.stopAttack();
+    wifi.stopHardwareActivities();
 
     // Also stop BLE attacks if running
     BruceBLE& ble = BruceBLE::getInstance();
-    ble.stopAttack();
+    ble.stopHardwareActivities();
 
     // Stop Evil Portal if running
     EvilPortal& portal = EvilPortal::getInstance();

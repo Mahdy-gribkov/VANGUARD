@@ -102,6 +102,7 @@ public:
     // VanguardModule interface
     bool onEnable() override;
     void onDisable() override;
+    void onTick() override;
     const char* getName() const override { return "BLE"; }
 
 
@@ -128,7 +129,6 @@ public:
      * @brief Non-blocking tick - MUST call every loop()
      */
     void tick();
-
     /**
      * @brief Get current adapter state
      */
@@ -150,6 +150,13 @@ public:
      * @brief Stop ongoing scan
      */
     void stopScan();
+
+    /**
+     * @brief Stop any active hardware operations (attacks, scans)
+     */
+    void stopHardwareActivities();
+
+
 
     /**
      * @brief Check if scan is complete
@@ -258,14 +265,7 @@ public:
      */
     std::vector<BLEDeviceInfo> getSuspiciousDevices() const;
 
-    // -------------------------------------------------------------------------
-    // Attack Control (Common)
-    // -------------------------------------------------------------------------
 
-    /**
-     * @brief Stop any active attack
-     */
-    void stopAttack();
 
 private:
     BruceBLE();
@@ -320,4 +320,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_BRUCE_BLE_H
+#endif // VANGUARD_BRUCE_BLE_H

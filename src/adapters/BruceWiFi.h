@@ -92,6 +92,7 @@ public:
     // VanguardModule interface
     bool onEnable() override;
     void onDisable() override;
+    void onTick() override;
     const char* getName() const override { return "WiFi"; }
 
 
@@ -336,7 +337,7 @@ public:
     /**
      * @brief Stop any active attack
      */
-    void stopAttack();
+    void stopHardwareActivities();
 
     /**
      * @brief Get packets sent during current attack

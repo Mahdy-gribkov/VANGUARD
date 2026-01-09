@@ -8,10 +8,10 @@ namespace Vanguard {
 
 enum class RadioOwner {
     NONE,
-    WIFI_STA,
-    WIFI_PROMISCUOUS,
-    BLE,
-    LORA // Future proofing
+    OWNER_WIFI_STA,
+    OWNER_WIFI_PROMISCUOUS,
+    OWNER_BLE,
+    OWNER_LORA // Future proofing
 };
 
 /**

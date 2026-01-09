@@ -112,7 +112,7 @@ BruceWiFi::~BruceWiFi() {
 bool BruceWiFi::onEnable() {
     if (m_enabled) return true;
     
-    if (RadioWarden::getInstance().requestRadio(RadioOwner::WIFI_STA)) {
+    if (RadioWarden::getInstance().requestRadio(RadioOwner::OWNER_WIFI_STA)) {
         m_enabled = true;
         m_state = WiFiAdapterState::IDLE;
         return true;
@@ -123,7 +123,7 @@ bool BruceWiFi::onEnable() {
 void BruceWiFi::onDisable() {
     if (!m_enabled) return;
     
-    stopAttack();
+    stopHardwareActivities();
     setPromiscuous(false);
     // Warden handles the low-level esp_wifi_stop()
     m_enabled = false;
@@ -140,11 +140,7 @@ void BruceWiFi::shutdown() {
     onDisable();
 }
 
-void BruceWiFi::tick() {
-    if (!m_enabled) return;
-    onTick();
-}
-
+void BruceWiFi::onTick() {
     switch (m_state) {
         case WiFiAdapterState::SCANNING:
             tickScan();
@@ -166,6 +162,11 @@ void BruceWiFi::tick() {
     }
 }
 
+void BruceWiFi::tick() {
+    // Legacy tick delegates to onTick
+    if (m_enabled) onTick();
+}
+
 WiFiAdapterState BruceWiFi::getState() const {
     return m_state;
 }
@@ -178,7 +179,7 @@ void BruceWiFi::beginScan() {
     if (!m_enabled && !onEnable()) return;
 
     if (m_state != WiFiAdapterState::IDLE) {
-        stopAttack();
+        stopHardwareActivities();
     }
 
     // Passive scan is more stable and catches stealthy APs
@@ -248,7 +249,7 @@ bool BruceWiFi::deauthStation(const uint8_t* stationMac,
                                uint8_t channel) {
     if (!m_initialized) return false;
 
-    stopAttack();
+    stopHardwareActivities();
     setChannel(channel);
 
     memcpy(m_attackTargetMac, stationMac, 6);
@@ -308,7 +309,7 @@ static uint8_t s_beaconChannel = 1;
 bool BruceWiFi::beaconFlood(const char** ssids, size_t count, uint8_t channel) {
     if (!m_initialized || count == 0) return false;
 
-    stopAttack();
+    stopHardwareActivities();
     setChannel(channel);
 
     s_beaconSsids = ssids;
@@ -405,7 +406,7 @@ bool BruceWiFi::captureHandshake(const uint8_t* apMac,
                                   bool sendDeauth) {
     if (!m_initialized) return false;
 
-    stopAttack();
+    stopHardwareActivities();
     setChannel(channel);
     setPromiscuous(true);
 
@@ -469,7 +470,7 @@ bool BruceWiFi::startEvilTwin(const char* ssid,
                                bool sendDeauth) {
     if (!ssid || strlen(ssid) == 0) return false;
 
-    stopAttack();
+    stopHardwareActivities();
 
     // Save config
     strncpy(s_evilTwinSSID, ssid, 32);
@@ -542,7 +543,7 @@ void BruceWiFi::onCredentialCaptured(CredentialCapturedCallback cb) {
 bool BruceWiFi::startMonitor(uint8_t channel) {
     if (!m_initialized) return false;
 
-    stopAttack();
+    stopHardwareActivities();
     if (channel > 0) {
         setChannel(channel);
     }
@@ -571,7 +572,7 @@ void BruceWiFi::tickMonitor() {
 // ATTACK CONTROL
 // =============================================================================
 
-void BruceWiFi::stopAttack() {
+void BruceWiFi::stopHardwareActivities() {
     // Stop Evil Twin if running
     if (m_state == WiFiAdapterState::EVIL_TWIN_ACTIVE) {
         stopEvilTwin();

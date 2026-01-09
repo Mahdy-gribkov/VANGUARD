@@ -48,7 +48,7 @@ BruceBLE::~BruceBLE() {
 bool BruceBLE::onEnable() {
     if (m_enabled) return true;
     
-    if (RadioWarden::getInstance().requestRadio(RadioOwner::BLE)) {
+    if (RadioWarden::getInstance().requestRadio(RadioOwner::OWNER_BLE)) {
         m_enabled = true;
         m_state = BLEAdapterState::IDLE;
         return true;
@@ -59,7 +59,7 @@ bool BruceBLE::onEnable() {
 void BruceBLE::onDisable() {
     if (!m_enabled) return;
     
-    stopAttack();
+    stopHardwareActivities();
     // We only stop activities, never deinit NimBLE
     m_enabled = false;
     m_state = BLEAdapterState::IDLE;
@@ -102,9 +102,25 @@ void BruceBLE::shutdown() {
     onDisable();
 }
 
+void BruceBLE::onTick() {
+    switch (m_state) {
+        case BLEAdapterState::SCANNING:
+            tickScan();
+            break;
+        case BLEAdapterState::SPAMMING:
+            tickSpam();
+            break;
+        case BLEAdapterState::BEACON_SPOOFING:
+            tickBeacon();
+            break;
+        default:
+            break;
+    }
+}
+
 void BruceBLE::tick() {
-    if (!m_enabled) return;
-    onTick();
+    // Legacy tick delegates to onTick
+    if (m_enabled) onTick();
 }
 
 BLEAdapterState BruceBLE::getState() const {
@@ -126,7 +142,7 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
         for (int i = 0; i < 5; i++) { yield(); delay(10); }
     }
 
-    stopAttack();
+    stopHardwareActivities();
 
     m_devices.clear();
     m_scanStartMs = millis();
@@ -278,7 +294,7 @@ bool BruceBLE::startSpam(BLESpamType type) {
         if (!init()) return false;
     }
 
-    stopAttack();
+    stopHardwareActivities();
 
     m_spamType = type;
     m_advertisementsSent = 0;
@@ -488,7 +504,7 @@ bool BruceBLE::spoofBeacon(const char* name,
         if (!init()) return false;
     }
 
-    stopAttack();
+    stopHardwareActivities();
 
     // Configure advertising as iBeacon
     NimBLEAdvertisementData advertisementData;
@@ -593,7 +609,7 @@ std::vector<BLEDeviceInfo> BruceBLE::getSuspiciousDevices() const {
 // ATTACK CONTROL
 // =============================================================================
 
-void BruceBLE::stopAttack() {
+void BruceBLE::stopHardwareActivities() {
     switch (m_state) {
         case BLEAdapterState::SCANNING:
             stopScan();

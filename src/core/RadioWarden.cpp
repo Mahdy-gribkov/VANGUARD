@@ -22,13 +22,13 @@ bool RadioWarden::requestRadio(RadioOwner owner) {
 
     bool success = false;
     switch (owner) {
-        case RadioOwner::WIFI_STA:
+        case RadioOwner::OWNER_WIFI_STA:
             success = initWiFiSTA();
             break;
-        case RadioOwner::WIFI_PROMISCUOUS:
+        case RadioOwner::OWNER_WIFI_PROMISCUOUS:
             success = initWiFiPromiscuous();
             break;
-        case RadioOwner::BLE:
+        case RadioOwner::OWNER_BLE:
             success = initBLE();
             break;
         default:
@@ -53,29 +53,29 @@ void RadioWarden::shutdownCurrent() {
     if (Serial) Serial.println("[Warden] Shutting down current radio...");
 
     // WiFi Cleanup
-    if (m_currentOwner == RadioOwner::WIFI_STA || m_currentOwner == RadioOwner::WIFI_PROMISCUOUS) {
+    if (m_currentOwner == RadioOwner::OWNER_WIFI_STA || m_currentOwner == RadioOwner::OWNER_WIFI_PROMISCUOUS) {
         esp_wifi_set_promiscuous(false);
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+        ::WiFi.disconnect(true);
+        ::WiFi.mode(WIFI_OFF);
         esp_wifi_stop();
         // Give hardware time to settle
         delay(50); 
     }
 
     // BLE Cleanup - we don't deinit NimBLE, just stop activities
-    if (m_currentOwner == RadioOwner::BLE) {
-        BruceBLE::getInstance().stopAttack();
+    if (m_currentOwner == RadioOwner::OWNER_BLE) {
+        BruceBLE::getInstance().stopHardwareActivities();
     }
 }
 
 bool RadioWarden::initWiFiSTA() {
-    WiFi.mode(WIFI_STA);
+    ::WiFi.mode(WIFI_MODE_STA);
     if (esp_wifi_start() != ESP_OK) return false;
     return true;
 }
 
 bool RadioWarden::initWiFiPromiscuous() {
-    WiFi.mode(WIFI_STA);
+    ::WiFi.mode(WIFI_MODE_STA);
     if (esp_wifi_start() != ESP_OK) return false;
     esp_wifi_set_promiscuous(true);
     return true;
