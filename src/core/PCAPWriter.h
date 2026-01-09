@@ -39,6 +39,11 @@ public:
 private:
     char m_filename[64];
     bool m_headerWritten;
+    File m_file;
+    uint8_t m_buffer[2048]; // 2KB write buffer
+    size_t m_bufferPos = 0;
+
+    void flush();
 };
 
 } // namespace Vanguard

@@ -9,6 +9,8 @@
 #include "../adapters/EvilPortal.h"
 #include "../adapters/BruceIR.h"
 #include "SDManager.h"
+#include "RadioWarden.h"
+#include "../ui/FeedbackManager.h"
 #include <WiFi.h>
 
 namespace Vanguard {
@@ -65,55 +67,39 @@ bool VanguardEngine::init() {
     if (m_initialized) return true;
 
     if (Serial) {
-        Serial.println("[WiFi] Initializing...");
+        Serial.println("[Engine] Initializing...");
     }
 
-    // Step 1: Clean shutdown any existing WiFi state
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    for (int i = 0; i < 10; i++) { yield(); delay(20); } // 200ms off
+    // Initialize Init-Once hardware
+    BruceBLE::getInstance().init();
+    BruceIR::getInstance().init();
 
-    // Step 2: Set station mode
-    WiFi.mode(WIFI_STA);
-    for (int i = 0; i < 10; i++) { yield(); delay(20); } // 200ms to settle
-
-    // Step 3: Delete any old scan results
-    WiFi.scanDelete();
-    yield();
-
-    // Step 4: Verify mode
-    if (WiFi.getMode() != WIFI_STA) {
-        if (Serial) {
-            Serial.println("[WiFi] ERROR: Mode not STA!");
-        }
-        return false;
-    }
+    // Start in Station mode by default
+    RadioWarden::getInstance().requestRadio(RadioOwner::WIFI_STA);
 
     m_initialized = true;
 
     // Step 5: Initialize SD Card
     SDManager::getInstance().init();
 
-    // Step 6: Initialize IR
-    BruceIR::getInstance().init();
-
     // Step 7: Add virtual targets
     m_targetTable.addVirtualTarget("Universal Remote", TargetType::IR_DEVICE);
 
     // Wire up BruceWiFi associations
     BruceWiFi::getInstance().onAssociation([this](const uint8_t* client, const uint8_t* ap) {
-        this->m_targetTable.addAssociation(client, ap);
+        if (this->m_targetTable.addAssociation(client, ap)) {
+             FeedbackManager::getInstance().pulse(50); // Feedback on client discovery
+        }
     });
 
     if (Serial) {
-        Serial.printf("[WiFi] Ready (MAC: %s)\n", WiFi.macAddress().c_str());
+        Serial.printf("[Engine] Ready\n");
     }
     return true;
 }
 
 void VanguardEngine::shutdown() {
-    WiFi.disconnect();
-    WiFi.mode(WIFI_OFF);
+    RadioWarden::getInstance().releaseRadio();
     m_initialized = false;
 }
 
@@ -235,12 +221,12 @@ void VanguardEngine::beginScan() {
     m_combinedScan = true;  // Will chain to BLE after WiFi
 
     if (Serial) {
-        Serial.println("[WiFi] Starting ASYNC scan...");
+        Serial.println("[WiFi] Starting PASSIVE scan...");
     }
 
-    // Use ASYNC scan - non-blocking, check in tick()
-    // Parameters: async=true, show_hidden=true, passive=false, max_ms=300ms per channel
-    WiFi.scanNetworks(true, true, false, 300);
+    // Delegates to RadioWarden via BruceWiFi::onEnable
+    BruceWiFi::getInstance().beginScan();
+
 
     m_scanState = ScanState::WIFI_SCANNING;
 
@@ -433,24 +419,14 @@ void VanguardEngine::tickTransition() {
 
     switch (m_transitionStep) {
         case 0:
-            // Step 0: Disconnect WiFi
-            WiFi.disconnect(true);
-            m_transitionStep = 1;
+            // Step 0: Stop WiFi activity
+            BruceWiFi::getInstance().onDisable();
+            m_transitionStep = 2; // Warden makes transition faster, jump to BLE
             m_transitionStartMs = millis();
             m_scanProgress = 46;
-            if (Serial) Serial.println("[Trans] Step 0: WiFi disconnect");
+            if (Serial) Serial.println("[Trans] Step 0: WiFi disable");
             break;
 
-        case 1:
-            // Step 1: Wait 50ms, then turn off WiFi
-            if (elapsed >= 50) {
-                WiFi.mode(WIFI_OFF);
-                m_transitionStep = 2;
-                m_transitionStartMs = millis();
-                m_scanProgress = 47;
-                if (Serial) Serial.println("[Trans] Step 1: WiFi off");
-            }
-            break;
 
         case 2:
             // Step 2: Wait 100ms for radio to fully stop

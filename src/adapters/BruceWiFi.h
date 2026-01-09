@@ -24,6 +24,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include "../core/VanguardTypes.h"
+#include "../core/VanguardModule.h"
 #include <functional>
 
 namespace Vanguard {
@@ -81,12 +82,18 @@ using AssociationCallback = std::function<void(const uint8_t* clientMac, const u
 // BruceWiFi Adapter Class
 // =============================================================================
 
-class BruceWiFi {
+class BruceWiFi : public VanguardModule {
 public:
     /**
      * @brief Get singleton instance (one WiFi radio)
      */
     static BruceWiFi& getInstance();
+
+    // VanguardModule interface
+    bool onEnable() override;
+    void onDisable() override;
+    const char* getName() const override { return "WiFi"; }
+
 
     // Prevent copying
     BruceWiFi(const BruceWiFi&) = delete;

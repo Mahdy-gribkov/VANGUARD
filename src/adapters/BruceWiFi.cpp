@@ -12,6 +12,7 @@
 #include "../core/PCAPWriter.h"
 #include <WiFi.h>
 #include <esp_err.h>
+#include "../core/RadioWarden.h"
 
 namespace Vanguard {
 
@@ -108,42 +109,41 @@ BruceWiFi::~BruceWiFi() {
 // LIFECYCLE
 // =============================================================================
 
-bool BruceWiFi::init() {
-    if (m_initialized) return true;
-
-    // Initialize WiFi in station mode first
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-
-    // Initialize ESP WiFi for raw frame access
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    if (esp_wifi_init(&cfg) != ESP_OK) {
-        return false;
+bool BruceWiFi::onEnable() {
+    if (m_enabled) return true;
+    
+    if (RadioWarden::getInstance().requestRadio(RadioOwner::WIFI_STA)) {
+        m_enabled = true;
+        m_state = WiFiAdapterState::IDLE;
+        return true;
     }
+    return false;
+}
 
-    if (esp_wifi_set_mode(WIFI_MODE_STA) != ESP_OK) {
-        return false;
-    }
-
-    if (esp_wifi_start() != ESP_OK) {
-        return false;
-    }
-
-    m_initialized = true;
+void BruceWiFi::onDisable() {
+    if (!m_enabled) return;
+    
+    stopAttack();
+    setPromiscuous(false);
+    // Warden handles the low-level esp_wifi_stop()
+    m_enabled = false;
     m_state = WiFiAdapterState::IDLE;
-    return true;
+}
+
+bool BruceWiFi::init() {
+    // Legacy init now delegates to Warden via onEnable
+    return onEnable();
 }
 
 void BruceWiFi::shutdown() {
-    stopAttack();
-    setPromiscuous(false);
-    esp_wifi_stop();
-    m_initialized = false;
-    m_state = WiFiAdapterState::IDLE;
+    // Legacy shutdown now delegates to onDisable
+    onDisable();
 }
 
 void BruceWiFi::tick() {
-    if (!m_initialized) return;
+    if (!m_enabled) return;
+    onTick();
+}
 
     switch (m_state) {
         case WiFiAdapterState::SCANNING:
@@ -175,12 +175,15 @@ WiFiAdapterState BruceWiFi::getState() const {
 // =============================================================================
 
 void BruceWiFi::beginScan() {
+    if (!m_enabled && !onEnable()) return;
+
     if (m_state != WiFiAdapterState::IDLE) {
         stopAttack();
     }
 
-    // Start async scan
-    WiFi.scanNetworks(true, true);  // async=true, show_hidden=true
+    // Passive scan is more stable and catches stealthy APs
+    // 120ms dwell time per channel
+    WiFi.scanNetworks(true, true, true, 120); 
     m_state = WiFiAdapterState::SCANNING;
 }
 

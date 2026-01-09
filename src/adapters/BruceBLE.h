@@ -21,6 +21,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include "../core/VanguardTypes.h"
+#include "../core/VanguardModule.h"
 #include <functional>
 #include <vector>
 
@@ -91,12 +92,18 @@ using BLESpamProgressCallback = std::function<void(uint32_t advertisementsSent)>
 // BruceBLE Adapter Class
 // =============================================================================
 
-class BruceBLE {
+class BruceBLE : public VanguardModule {
 public:
     /**
      * @brief Get singleton instance
      */
     static BruceBLE& getInstance();
+
+    // VanguardModule interface
+    bool onEnable() override;
+    void onDisable() override;
+    const char* getName() const override { return "BLE"; }
+
 
     // Prevent copying
     BruceBLE(const BruceBLE&) = delete;

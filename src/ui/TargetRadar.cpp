@@ -7,6 +7,7 @@
 
 #include "TargetRadar.h"
 #include <M5Cardputer.h>
+#include "FeedbackManager.h"
 
 namespace Vanguard {
 
@@ -60,6 +61,11 @@ void TargetRadar::tick() {
             m_lastRefreshMs = now;
             m_needsRedraw = true;
         }
+    }
+
+    // Update Geiger Counter based on currently highlighted target
+    if (m_highlightIndex >= 0 && m_highlightIndex < (int)m_targets.size()) {
+        FeedbackManager::getInstance().updateGeiger(m_targets[m_highlightIndex].rssi);
     }
 }
 

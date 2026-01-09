@@ -10,26 +10,25 @@ PCAPWriter::PCAPWriter(const char* filename)
 }
 
 bool PCAPWriter::open() {
-    // If file exists, we assume header is already there
-    if (SD.exists(m_filename)) {
-        m_headerWritten = true;
-        return true;
+    // If file exists, we don't overwrite global header
+    bool exists = SD.exists(m_filename);
+    
+    m_file = SD.open(m_filename, FILE_APPEND);
+    if (!m_file) return false;
+
+    if (!exists) {
+        pcap_global_header header;
+        header.magic_number = 0xa1b2c3d4;
+        header.version_major = 2;
+        header.version_minor = 4;
+        header.thiszone = 0;
+        header.sigfigs = 0;
+        header.snaplen = 65535;
+        header.network = 105; // IEEE 802.11
+
+        m_file.write((uint8_t*)&header, sizeof(header));
+        m_file.flush();
     }
-
-    File file = SD.open(m_filename, FILE_WRITE);
-    if (!file) return false;
-
-    pcap_global_header header;
-    header.magic_number = 0xa1b2c3d4;
-    header.version_major = 2;
-    header.version_minor = 4;
-    header.thiszone = 0;
-    header.sigfigs = 0;
-    header.snaplen = 65535;
-    header.network = 105; // IEEE 802.11
-
-    file.write((uint8_t*)&header, sizeof(header));
-    file.close();
     
     m_headerWritten = true;
     return true;
@@ -37,9 +36,7 @@ bool PCAPWriter::open() {
 
 bool PCAPWriter::writePacket(const uint8_t* data, uint16_t len) {
     if (!m_headerWritten && !open()) return false;
-
-    File file = SD.open(m_filename, FILE_APPEND);
-    if (!file) return false;
+    if (!m_file) return false;
 
     pcap_packet_header pktHeader;
     uint32_t now = millis();
@@ -48,15 +45,30 @@ bool PCAPWriter::writePacket(const uint8_t* data, uint16_t len) {
     pktHeader.incl_len = len;
     pktHeader.orig_len = len;
 
-    file.write((uint8_t*)&pktHeader, sizeof(pktHeader));
-    file.write(data, len);
-    file.close();
+    // Write header and data to file directly (buffered by File object in most ESP32 SD libs)
+    // But we manually flush only when needed to avoid blocking
+    m_file.write((uint8_t*)&pktHeader, sizeof(pktHeader));
+    m_file.write(data, len);
+
+    static uint32_t lastFlush = 0;
+    if (millis() - lastFlush > 500) { // Flush every 500ms to avoid blocking but ensure data persistence
+        m_file.flush();
+        lastFlush = millis();
+    }
 
     return true;
 }
 
 void PCAPWriter::close() {
+    if (m_file) {
+        m_file.flush();
+        m_file.close();
+    }
     m_headerWritten = false;
+}
+
+void PCAPWriter::flush() {
+    if (m_file) m_file.flush();
 }
 
 } // namespace Vanguard

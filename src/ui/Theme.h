@@ -40,10 +40,11 @@ constexpr uint16_t COLOR_TEXT_MUTED      = 0x7BEF;  // Mid gray
 constexpr uint16_t COLOR_TEXT_DISABLED   = 0x4208;  // Dark gray
 
 // Accent colors - PINKISH-ORANGE (Coral/Salmon)
-constexpr uint16_t COLOR_ACCENT          = 0xFB6D;  // Coral pink-orange #FF6D55
-constexpr uint16_t COLOR_ACCENT_BRIGHT   = 0xFD93;  // Brighter coral
-constexpr uint16_t COLOR_ACCENT_DIM      = 0xA945;  // Dark coral
-constexpr uint16_t COLOR_ACCENT_PINK     = 0xF8B2;  // More pink variant
+constexpr uint16_t COLOR_ACCENT          = 0xFB6D;  // Coral #FF6D55
+constexpr uint16_t COLOR_ACCENT_BRIGHT   = 0xFE10;  // Brighter #FF8270
+constexpr uint16_t COLOR_ACCENT_DIM      = 0x8206;  // Muted #844136
+constexpr uint16_t COLOR_ACCENT_PINK     = 0xF8B2;  // Pinkish #F81690
+
 constexpr uint16_t COLOR_SUCCESS         = 0x07E0;  // Green
 constexpr uint16_t COLOR_WARNING         = 0xFFE0;  // Yellow
 constexpr uint16_t COLOR_DANGER          = 0xF800;  // Red
@@ -81,7 +82,7 @@ constexpr int16_t MARGIN_XS      = 2;
 constexpr int16_t MARGIN_SM      = 4;
 // Branding
 static constexpr const char* APP_NAME = "VANGUARD";
-static constexpr const char* VERSION_STRING = "v0.1-Alpha";
+static constexpr const char* VERSION_STRING = "v1.1-ALPHA [ITER2]";
 
 // =============================================================================
 // TYPOGRAPHY

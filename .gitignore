@@ -83,6 +83,7 @@ captures/
 *.cap
 *.hccapx
 *.csv
+!partitions_vanguard.csv
 handshakes/
 
 # =============================================================================

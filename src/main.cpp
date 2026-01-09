@@ -19,6 +19,7 @@
 #include "ui/SettingsPanel.h"
 #include "ui/AboutPanel.h"
 #include "ui/Theme.h"
+#include "ui/FeedbackManager.h"
 
 using namespace Vanguard;
 
@@ -96,6 +97,10 @@ void setup() {
     g_menu = new MainMenu();
     g_settings = new SettingsPanel();
     g_about = new AboutPanel();
+
+    FeedbackManager::getInstance().init();
+    FeedbackManager::getInstance().beep(2000, 100); // Boot beep
+
 
     // Start boot sequence
     g_boot->begin();
