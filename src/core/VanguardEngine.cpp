@@ -15,6 +15,7 @@
 #include "../ui/FeedbackManager.h"
 #include <M5Cardputer.h>
 #include <WiFi.h>
+#include <cstring>
 
 namespace Vanguard {
 

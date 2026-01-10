@@ -11,6 +11,7 @@ platformio_override.ini
 # VSCode / IDE
 # =============================================================================
 .vscode/
+!.vscode/c_cpp_properties.json
 .idea/
 *.code-workspace
 *.swp
